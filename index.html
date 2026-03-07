@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<meta charset="UTF-8">
+<title>ResQNET</title>
+<link rel="stylesheet" href="style.css">
+
+<!-- AI LIBRARIES -->
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+</head>
+
+<body>
+
+<div class="phone">
+
+<!-- GOOGLE MAP -->
+<div id="map"></div>
+
+<!-- CAMERA PANEL -->
+
+<div id="cameraPanel">
+
+<video id="camera" autoplay playsinline></video>
+
+<!-- AI DETECTION OVERLAY -->
+
+<canvas id="aiCanvas"></canvas>
+
+<canvas id="snapshot" style="display:none;"></canvas>
+
+<button id="captureBtn">Capture</button>
+<button id="closeCamera">Close</button>
+
+</div>
+
+<!-- CHAT PANEL -->
+
+<div id="chatPanel">
+
+<h3>AI Rescue Assistant</h3>
+
+<div id="chatbox"></div>
+
+<div class="chatInput">
+
+<input id="userInput" placeholder="Ask rescue assistant...">
+<button id="sendMessage">Send</button>
+
+</div>
+
+</div>
+
+<!-- DISTRESS FORM -->
+
+<div id="distressForm">
+
+<h3>Send Distress Signal</h3>
+
+<input id="victimName" placeholder="Name">
+
+<select id="urgencyLevel">
+<option value="LOW">Low Urgency</option>
+<option value="MEDIUM">Medium Urgency</option>
+<option value="HIGH">High Urgency</option>
+</select>
+
+<input id="peopleNearby" type="number" placeholder="Number of People Nearby">
+
+<button id="submitDistress">Submit Distress Signal</button>
+
+</div>
+
+<!-- SIDE CONTROLS -->
+
+<div class="controls">
+
+<button class="circle" id="connectESP">🔗</button>
+<button class="circle" id="buzzerBtn">✦</button>
+<button class="circle" id="photoBtn">⎙</button>
+<button class="circle" id="chatBtn">❛❜</button>
+
+</div>
+
+<!-- DISTRESS BUTTON -->
+
+<button class="alertBtn" id="alertButton">⚠︎</button>
+
+<!-- RESCUE BUTTON -->
+
+<button id="rescueBtn">▲ Rescue Requests</button>
+
+<!-- RESCUE POPUP -->
+
+<div id="rescuePopup">
+
+<h3>Active Rescue Requests</h3>
+<div id="requestsList"></div>
+
+</div>
+
+<!-- MODE SWITCH -->
+
+<div class="modeSwitch">
+
+<button id="victimMode">Victim Mode</button>
+<button id="rescuerMode">Rescuer Mode</button>
+
+</div>
+
+</div>
+
+<script src="script.js"></script>
+
+<script async defer
+src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC3T0asCaSYNIyuj6lJBsBzVohb7zfAPxQ&callback=initMap">
+</script>
+
+</body>
+
+</html>
