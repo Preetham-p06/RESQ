@@ -1,0 +1,293 @@
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+#include <Wire.h>
+
+#define BUZZER_PIN 14
+#define SPEAKER_PIN 25
+
+BLECharacteristic *pCharacteristic;
+
+#define SERVICE_UUID        "0000ffe0-0000-1000-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
+
+// ----------------------------
+// LCD Settings
+// ----------------------------
+#define LCD_ADDR 0x27
+
+#define LCD_BACKLIGHT 0x08
+#define ENABLE 0x04
+#define RS 0x01
+
+// ----------------------------
+// LCD Refresh Settings
+// ----------------------------
+const unsigned long MESSAGE_DISPLAY_TIME = 3000;
+
+String currentLine1 = "ResQNET Ready";
+String currentLine2 = "Waiting...";
+unsigned long messageStartTime = 0;
+bool showingTempMessage = false;
+
+void lcdWrite(byte data) {
+  Wire.beginTransmission(LCD_ADDR);
+  Wire.write(data | LCD_BACKLIGHT);
+  Wire.endTransmission();
+}
+
+void lcdPulse(byte data) {
+  lcdWrite(data | ENABLE);
+  delayMicroseconds(1);
+  lcdWrite(data & ~ENABLE);
+  delayMicroseconds(50);
+}
+
+void lcdSend(byte data, byte mode) {
+  byte high = data & 0xF0;
+  byte low = (data << 4) & 0xF0;
+
+  lcdWrite(high | mode);
+  lcdPulse(high | mode);
+
+  lcdWrite(low | mode);
+  lcdPulse(low | mode);
+}
+
+void lcdCommand(byte cmd) {
+  lcdSend(cmd, 0);
+}
+
+void lcdChar(byte data) {
+  lcdSend(data, RS);
+}
+
+void lcdPrint(String text) {
+  for (int i = 0; i < text.length(); i++) {
+    lcdChar(text[i]);
+  }
+}
+
+void lcdSetCursor(int col, int row) {
+  byte row_offsets[] = {0x00, 0x40};
+  lcdCommand(0x80 | (col + row_offsets[row]));
+}
+
+void lcdClear() {
+  lcdCommand(0x01);
+  delay(2);
+}
+
+void lcdInit() {
+  delay(50);
+  lcdCommand(0x33);
+  lcdCommand(0x32);
+  lcdCommand(0x28);
+  lcdCommand(0x0C);
+  lcdCommand(0x06);
+  lcdCommand(0x01);
+  delay(5);
+}
+
+String fitToLCD(String text) {
+  if (text.length() > 16) {
+    return text.substring(0, 16);
+  }
+  while (text.length() < 16) {
+    text += " ";
+  }
+  return text;
+}
+
+void lcdShowMessage(String line1, String line2, bool temporary = false) {
+  currentLine1 = fitToLCD(line1);
+  currentLine2 = fitToLCD(line2);
+
+  lcdClear();
+  lcdSetCursor(0, 0);
+  lcdPrint(currentLine1);
+  lcdSetCursor(0, 1);
+  lcdPrint(currentLine2);
+
+  if (temporary) {
+    showingTempMessage = true;
+    messageStartTime = millis();
+  } else {
+    showingTempMessage = false;
+  }
+}
+
+void lcdShowDefaultScreen() {
+  lcdShowMessage("ResQNET Online", "Waiting...", false);
+}
+
+void updateLCD() {
+  if (showingTempMessage && (millis() - messageStartTime >= MESSAGE_DISPLAY_TIME)) {
+    lcdShowDefaultScreen();
+  }
+}
+
+// ----------------------------
+// Helper Functions
+// ----------------------------
+
+void playBuzzAlert() {
+  Serial.println("DISTRESS BUZZER ACTIVATED");
+
+  lcdShowMessage("Distress Alert", "Buzzer Active", true);
+
+  tone(BUZZER_PIN, 2000);
+  delay(1500);
+  noTone(BUZZER_PIN);
+}
+
+void playFoundAlert(int victimCount) {
+  Serial.println("VICTIM FOUND SPEAKER ALERT ACTIVATED");
+
+  String line1;
+  if (victimCount == 1) {
+    line1 = "Victim Found";
+  } else {
+    line1 = "Victims Found";
+  }
+
+  String line2 = "Count: " + String(victimCount);
+
+  lcdShowMessage(line1, line2, true);
+
+  tone(SPEAKER_PIN, 1200);
+  delay(250);
+  noTone(SPEAKER_PIN);
+  delay(120);
+
+  tone(SPEAKER_PIN, 1600);
+  delay(250);
+  noTone(SPEAKER_PIN);
+  delay(120);
+
+  tone(SPEAKER_PIN, 2200);
+  delay(400);
+  noTone(SPEAKER_PIN);
+}
+
+void turnAllOff() {
+  Serial.println("ALL OUTPUTS OFF");
+
+  noTone(BUZZER_PIN);
+  noTone(SPEAKER_PIN);
+
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(SPEAKER_PIN, LOW);
+
+  lcdShowMessage("Outputs Off", "System Ready", true);
+}
+
+// ----------------------------
+// Command Processor
+// ----------------------------
+
+void processCommand(String value) {
+  value.trim();
+  value.toUpperCase();
+
+  Serial.println("Received: " + value);
+
+  if (value == "BUZZ") {
+    playBuzzAlert();
+  }
+  else if (value.startsWith("FOUND")) {
+    int victimCount = 1;
+
+    int colonIndex = value.indexOf(':');
+    if (colonIndex != -1) {
+      String countPart = value.substring(colonIndex + 1);
+      countPart.trim();
+      int parsed = countPart.toInt();
+      if (parsed > 0) {
+        victimCount = parsed;
+      }
+    }
+
+    playFoundAlert(victimCount);
+  }
+  else if (value == "OFF") {
+    turnAllOff();
+  }
+  else {
+    Serial.println("Unknown command");
+    lcdShowMessage("Unknown Cmd", value, true);
+  }
+}
+
+// ----------------------------
+// BLE Callback
+// ----------------------------
+
+class MyCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    String value = pCharacteristic->getValue();
+
+    if (value.length() > 0) {
+      processCommand(value);
+    }
+  }
+};
+
+// ----------------------------
+// Setup
+// ----------------------------
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(SPEAKER_PIN, OUTPUT);
+
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(SPEAKER_PIN, LOW);
+
+  Wire.begin(21, 22);
+  lcdInit();
+  lcdShowDefaultScreen();
+
+  BLEDevice::init("ResQNET_BUZZER");
+
+  BLEServer *pServer = BLEDevice::createServer();
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_WRITE
+  );
+
+  pCharacteristic->setCallbacks(new MyCallbacks());
+
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->start();
+
+  Serial.println("BLE Ready");
+  Serial.println("Commands:");
+  Serial.println("BUZZ");
+  Serial.println("FOUND");
+  Serial.println("FOUND:2");
+  Serial.println("OFF");
+}
+
+// ----------------------------
+// Loop
+// ----------------------------
+
+void loop() {
+  updateLCD();
+
+  if (Serial.available()) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+
+    if (command.length() > 0) {
+      processCommand(command);
+    }
+  }
+}
